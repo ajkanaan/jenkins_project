@@ -1,0 +1,14 @@
+# Generated environments, reports, and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+reports/
+.DS_Store
+# Never commit credentials
+.env
+*.key

@@ -1,0 +1,90 @@
+pipeline {
+    agent any
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    parameters {
+        string(name: 'PYTHON_BIN', defaultValue: '/opt/homebrew/bin/python3.13',
+               description: 'Absolute Python 3 executable on this Mac agent')
+    }
+    environment {
+        VENV = '.venv'
+        DEPLOY_DIR = "${JENKINS_HOME}/deployments/jenkins_project"
+    }
+    stages {
+        stage('Setup') {
+            steps {
+                sh '''
+                    set -eu
+                    mkdir -p reports
+                    "$PYTHON_BIN" -m venv "$VENV"
+                    "$VENV/bin/python" -m pip install -r requirements-lock.txt > reports/setup.txt 2>&1
+                    cat reports/setup.txt
+                    "$VENV/bin/python" -m pip freeze > reports/installed-dependencies.txt
+                    git rev-parse HEAD > reports/commit.txt
+                '''
+            }
+        }
+        stage('Lint') {
+            steps {
+                sh '''
+                    set -eu
+                    "$VENV/bin/python" -m flake8 app.py tests > reports/lint.txt 2>&1
+                    cat reports/lint.txt
+                '''
+            }
+        }
+        stage('Test') {
+            steps {
+                sh '''
+                    set -eu
+                    "$VENV/bin/python" -m pytest --junitxml=reports/tests.xml > reports/tests.txt 2>&1
+                    cat reports/tests.txt
+                '''
+            }
+        }
+        stage('Coverage') {
+            steps {
+                sh '''
+                    set -eu
+                    "$VENV/bin/python" -m coverage run -m pytest > reports/coverage-tests.txt 2>&1
+                    "$VENV/bin/python" -m coverage report > reports/coverage.txt
+                    "$VENV/bin/python" -m coverage xml -o reports/coverage.xml
+                    "$VENV/bin/python" -m coverage html -d reports/htmlcov
+                    cat reports/coverage-tests.txt reports/coverage.txt
+                '''
+            }
+        }
+        stage('Security Scan') {
+            steps {
+                sh '''
+                    set -eu
+                    "$VENV/bin/python" -m bandit app.py -f json -o reports/bandit.json
+                    "$VENV/bin/python" -m bandit app.py -f txt -o reports/bandit.txt
+                    cat reports/bandit.txt
+                '''
+            }
+        }
+        stage('Deploy') {
+            steps {
+                sh '''
+                    set -eu
+                    sh deploy.sh > reports/deployment.txt 2>&1
+                    cat reports/deployment.txt
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+            junit testResults: 'reports/tests.xml', allowEmptyResults: true
+        }
+        cleanup {
+            cleanWs(deleteDirs: true, disableDeferredWipeout: true)
+        }
+    }
+}
