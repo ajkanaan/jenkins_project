@@ -11,6 +11,7 @@ pipeline {
                description: 'Absolute Python 3 executable on this Mac agent')
     }
     environment {
+        PYTHON_BIN = "${params.PYTHON_BIN ?: '/opt/homebrew/bin/python3.13'}"
         VENV = '.venv'
         DEPLOY_DIR = "${JENKINS_HOME}/deployments/jenkins_project"
     }
